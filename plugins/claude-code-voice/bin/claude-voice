@@ -1,0 +1,294 @@
+#!/usr/bin/env bash
+# claude-code-voice — control CLI.
+#
+#   claude-voice on | off | toggle    turn readback on/off
+#   claude-voice status               engine, voice, daemon state
+#   claude-voice stop                 shut up now, stay enabled
+#   claude-voice test                 speak a sample line
+#   claude-voice voice <name>         set the voice
+#   claude-voice voices               list voices for the current engine
+#   claude-voice engine kokoro|say    pick the backend
+#   claude-voice speed <x>            kokoro rate multiplier (1.0 = normal)
+#   claude-voice rate <wpm>           built-in engine rate
+#   claude-voice maxlen <n>           cap spoken chars (0 = whole reply)
+#   claude-voice announce on|off      speak the project name in parallel chats
+#   claude-voice install-kokoro       download the neural model (~520MB)
+#   claude-voice restart              bounce the daemon
+#   claude-voice logs                 tail the daemon log
+#
+# State lives in files under $CLAUDE_VOICE_HOME (default ~/.claude/voice),
+# not env vars: Claude Code spawns hooks without your interactive shell's
+# environment, so an `export` in ~/.zshrc would never reach the hook.
+
+set -u
+
+VOICE_HOME="${CLAUDE_VOICE_HOME:-$HOME/.claude/voice}"
+mkdir -p "$VOICE_HOME"
+
+STATE_FILE="$VOICE_HOME/state"
+ENGINE_FILE="$VOICE_HOME/engine"
+VOICE_FILE="$VOICE_HOME/voice"
+RATE_FILE="$VOICE_HOME/rate"
+SPEED_FILE="$VOICE_HOME/speed"
+MAXLEN_FILE="$VOICE_HOME/maxlen"
+ANNOUNCE_FILE="$VOICE_HOME/announce"
+PID_FILE="$VOICE_HOME/say.pid"
+
+# Short socket path — see the comment in hooks/speak.sh. AF_UNIX caps near 104
+# bytes; a socket inside VOICE_HOME overflows it on deep home dirs.
+_ccv_sock() {
+  local h
+  if command -v md5 >/dev/null 2>&1; then
+    h=$(printf '%s' "$VOICE_HOME" | md5 -q 2>/dev/null | cut -c1-8)
+  else
+    h=$(printf '%s' "$VOICE_HOME" | md5sum 2>/dev/null | cut -c1-8)
+  fi
+  local d="/tmp/ccvoice-$(id -u)"
+  mkdir -p "$d" 2>/dev/null && chmod 700 "$d" 2>/dev/null
+  printf '%s/%s.sock' "$d" "$h"
+}
+SOCK="$(_ccv_sock)"
+
+VENV="$VOICE_HOME/venv"
+VENV_PY="$VENV/bin/python"
+MODELS="$VOICE_HOME/models"
+LOG="$VOICE_HOME/daemon.log"
+
+# The plugin ships the daemon next to this script; allow an override for dev.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DAEMON="${CLAUDE_VOICE_DAEMON:-$SELF_DIR/../hooks/voice-daemon.py}"
+
+MODEL_URL="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+
+ENGINE=$(cat "$ENGINE_FILE" 2>/dev/null || echo kokoro)
+RATE=$(cat "$RATE_FILE" 2>/dev/null || echo 190)
+SPEED=$(cat "$SPEED_FILE" 2>/dev/null || echo 1.0)
+if [ "$ENGINE" = kokoro ]; then
+  VOICE=$(cat "$VOICE_FILE" 2>/dev/null || echo af_heart)
+else
+  VOICE=$(cat "$VOICE_FILE" 2>/dev/null || echo Samantha)
+fi
+
+KOKORO_VOICES="af_heart af_bella af_nicole af_aoede af_kore af_sarah af_sky af_nova af_jessica af_river af_alloy
+am_michael am_fenrir am_puck am_echo am_eric am_liam am_onyx am_adam
+bf_emma bf_isabella bf_alice bf_lily bm_george bm_fable bm_daniel bm_lewis"
+
+state() { cat "$STATE_FILE" 2>/dev/null || echo off; }
+is_kokoro_voice() { grep -qxF "$1" <<<"$(tr ' ' '\n' <<<"$KOKORO_VOICES")"; }
+kokoro_ready() { [ -x "$VENV_PY" ] && [ -s "$MODELS/kokoro-v1.0.onnx" ] && [ -s "$MODELS/voices-v1.0.bin" ]; }
+daemon_up() { [ -S "$SOCK" ] && [ "$(printf '__PING__\n' | nc -U "$SOCK" 2>/dev/null)" = pong ]; }
+
+hush() {
+  daemon_up && printf '__STOP__\n' | nc -U "$SOCK" >/dev/null 2>&1
+  [ -f "$PID_FILE" ] && kill "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null
+  rm -f "$PID_FILE"
+  pkill -x say 2>/dev/null; pkill -x espeak-ng 2>/dev/null; pkill -x espeak 2>/dev/null
+  pkill -x afplay 2>/dev/null; pkill -x paplay 2>/dev/null; pkill -x aplay 2>/dev/null
+  return 0
+}
+
+start_daemon() {
+  kokoro_ready || return 1
+  nohup "$VENV_PY" "$DAEMON" >/dev/null 2>&1 & disown 2>/dev/null || true
+  for _ in $(seq 1 60); do daemon_up && return 0; sleep 0.25; done
+  return 1
+}
+
+speak_builtin() {
+  if command -v say >/dev/null 2>&1; then say -v "$VOICE" -r "$RATE" -- "$1"
+  elif command -v espeak-ng >/dev/null 2>&1; then espeak-ng -s "$RATE" -- "$1"
+  elif command -v espeak >/dev/null 2>&1; then espeak -s "$RATE" -- "$1"
+  else echo "no built-in TTS found (need 'say' or 'espeak-ng')" >&2; return 1
+  fi
+}
+
+say_now() {
+  hush
+  if [ "$ENGINE" = kokoro ]; then
+    if daemon_up || start_daemon; then
+      printf '%s\n' "$1" | nc -U "$SOCK" >/dev/null 2>&1 && return 0
+    fi
+    echo "(kokoro unavailable — using the built-in voice)" >&2
+  fi
+  speak_builtin "$1"
+}
+
+install_kokoro() {
+  command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; return 1; }
+
+  if [ ! -x "$VENV_PY" ]; then
+    echo "Creating Python environment…"
+    if command -v uv >/dev/null 2>&1; then
+      uv venv "$VENV" --python 3.12 >/dev/null 2>&1 || uv venv "$VENV" >/dev/null 2>&1
+      VIRTUAL_ENV="$VENV" uv pip install --quiet kokoro-onnx soundfile numpy || return 1
+    elif command -v python3 >/dev/null 2>&1; then
+      python3 -m venv "$VENV" || return 1
+      "$VENV/bin/pip" install --quiet --upgrade pip
+      "$VENV/bin/pip" install --quiet kokoro-onnx soundfile numpy || return 1
+    else
+      echo "need uv or python3 to install the kokoro engine" >&2
+      return 1
+    fi
+  fi
+
+  mkdir -p "$MODELS"
+  for f in kokoro-v1.0.onnx voices-v1.0.bin; do
+    if [ -s "$MODELS/$f" ]; then
+      echo "have $f"
+    else
+      echo "Downloading $f…"
+      curl -fL --progress-bar -o "$MODELS/$f" "$MODEL_URL/$f" || return 1
+    fi
+  done
+  echo "Kokoro installed."
+}
+
+case "${1:-status}" in
+  on)
+    echo on > "$STATE_FILE"
+    if [ "$ENGINE" = kokoro ] && ! kokoro_ready; then
+      echo "Kokoro isn't installed yet (~520MB). Run: claude-voice install-kokoro"
+      echo "Falling back to the built-in voice for now."
+      echo say > "$ENGINE_FILE"
+      ENGINE=say
+    fi
+    echo "voice readback ON — engine=$ENGINE voice=$VOICE"
+    [ "$ENGINE" = kokoro ] && ! daemon_up && {
+      echo "warming the kokoro daemon in the background…"
+      nohup "$VENV_PY" "$DAEMON" >/dev/null 2>&1 & disown 2>/dev/null || true
+    }
+    ;;
+  off)      echo off > "$STATE_FILE"; hush; echo "voice readback OFF" ;;
+  toggle)   if [ "$(state)" = on ]; then exec "$0" off; else exec "$0" on; fi ;;
+  stop|shh) hush; echo "silenced (still $(state))" ;;
+
+  engine)
+    case "${2:-}" in
+      kokoro)
+        kokoro_ready || { echo "Kokoro isn't installed. Run: claude-voice install-kokoro" >&2; exit 1; }
+        echo kokoro > "$ENGINE_FILE"
+        is_kokoro_voice "$VOICE" || { echo af_heart > "$VOICE_FILE"; echo "voice reset to af_heart"; }
+        echo "engine = kokoro (local neural)"
+        exec "$0" restart
+        ;;
+      say)
+        echo say > "$ENGINE_FILE"
+        case "$VOICE" in af_*|am_*|bf_*|bm_*) echo Samantha > "$VOICE_FILE"; echo "voice reset to Samantha" ;; esac
+        daemon_up && printf '__QUIT__\n' | nc -U "$SOCK" >/dev/null 2>&1
+        echo "engine = say (OS built-in)"
+        ;;
+      *) echo "usage: claude-voice engine {kokoro|say}   (current: $ENGINE)" >&2; exit 1 ;;
+    esac
+    ;;
+
+  voice)
+    want="${2:-}"
+    [ -n "$want" ] || { echo "usage: claude-voice voice <name>   (see: claude-voice voices)" >&2; exit 1; }
+    if [ "$ENGINE" = kokoro ]; then
+      is_kokoro_voice "$want" || { echo "'$want' is not a kokoro voice. Run 'claude-voice voices'." >&2; exit 1; }
+    elif command -v say >/dev/null 2>&1; then
+      say -v '?' | awk '{print $1}' | grep -qxF "$want" \
+        || { echo "'$want' is not an installed system voice." >&2; exit 1; }
+    fi
+    echo "$want" > "$VOICE_FILE"; VOICE="$want"
+    echo "voice = $want"
+    say_now "Voice set. This is how I will read Claude's replies to you."
+    ;;
+
+  voices)
+    if [ "$ENGINE" = kokoro ]; then
+      echo "Kokoro voices (current: $VOICE)"
+      echo
+      echo "  American female:  af_heart*  af_bella  af_nicole  af_aoede  af_kore"
+      echo "                    af_sarah  af_sky  af_nova  af_jessica  af_river  af_alloy"
+      echo "  American male:    am_michael  am_fenrir  am_puck  am_echo  am_eric"
+      echo "                    am_liam  am_onyx  am_adam"
+      echo "  British female:   bf_emma  bf_isabella  bf_alice  bf_lily"
+      echo "  British male:     bm_george  bm_fable  bm_daniel  bm_lewis"
+      echo
+      echo "  * af_heart is Kokoro's reference voice — best overall."
+      echo "    af_bella and am_michael are the next best graded."
+      echo
+      echo "Set with:  claude-voice voice af_bella"
+    else
+      echo "System voices (current: $VOICE)"
+      command -v say >/dev/null 2>&1 \
+        && say -v '?' | grep -E 'en_(US|GB|AU|IE)' | awk '{printf "  %-20s %s\n", $1, $2}' \
+        || echo "  (espeak-ng — see 'espeak-ng --voices')"
+    fi
+    ;;
+
+  speed)
+    want="${2:-}"
+    [ -n "$want" ] || { echo "usage: claude-voice speed <multiplier>   e.g. 1.15   (current: $SPEED)" >&2; exit 1; }
+    echo "$want" > "$SPEED_FILE"; SPEED="$want"
+    echo "kokoro speed = $want"
+    say_now "Speaking at $want times normal speed."
+    ;;
+
+  rate)
+    want="${2:-}"
+    case "$want" in ''|*[!0-9]*) echo "usage: claude-voice rate <wpm>   e.g. 175   (current: $RATE)" >&2; exit 1 ;; esac
+    echo "$want" > "$RATE_FILE"; echo "rate = $want wpm"
+    ;;
+
+  maxlen)
+    want="${2:-}"
+    case "$want" in ''|*[!0-9]*) echo "usage: claude-voice maxlen <chars>   (0 = whole reply; current: $(cat "$MAXLEN_FILE" 2>/dev/null || echo 0))" >&2; exit 1 ;; esac
+    echo "$want" > "$MAXLEN_FILE"
+    [ "$want" = 0 ] && echo "maxlen = 0 — full replies are read ('claude-voice stop' cuts one short)" \
+                    || echo "maxlen = $want chars — longer replies trim at a sentence break"
+    ;;
+
+  announce)
+    case "${2:-}" in
+      on)  echo on  > "$ANNOUNCE_FILE"; echo "announce = on — the project name is spoken only when another session spoke last" ;;
+      off) echo off > "$ANNOUNCE_FILE"; echo "announce = off — the project name is never spoken" ;;
+      *)   echo "usage: claude-voice announce {on|off}   (current: $(cat "$ANNOUNCE_FILE" 2>/dev/null || echo on))" >&2; exit 1 ;;
+    esac
+    ;;
+
+  install-kokoro)
+    install_kokoro && { echo kokoro > "$ENGINE_FILE"; is_kokoro_voice "$VOICE" || echo af_heart > "$VOICE_FILE"; exec "$0" restart; }
+    ;;
+
+  restart)
+    daemon_up && printf '__QUIT__\n' | nc -U "$SOCK" >/dev/null 2>&1
+    pkill -f voice-daemon.py 2>/dev/null
+    rm -f "$SOCK"
+    [ "$ENGINE" = kokoro ] || { echo "engine is '$ENGINE'; no daemon to run"; exit 0; }
+    kokoro_ready || { echo "Kokoro isn't installed. Run: claude-voice install-kokoro" >&2; exit 1; }
+    printf 'starting the kokoro daemon (warming up) '
+    nohup "$VENV_PY" "$DAEMON" >/dev/null 2>&1 & disown 2>/dev/null || true
+    for _ in $(seq 1 60); do daemon_up && break; printf '.'; sleep 0.25; done
+    echo
+    daemon_up && echo "ready — replies now start speaking in about a second" \
+              || { echo "the daemon failed to start; see $LOG" >&2; exit 1; }
+    ;;
+
+  logs) tail -n "${2:-20}" "$LOG" 2>/dev/null || echo "(no log yet)" ;;
+
+  test)
+    say_now "Voice readback is working. This is the ${VOICE} voice, reading a sample of what Claude's replies will sound like."
+    ;;
+
+  status)
+    printf "readback:  %s\n" "$(state)"
+    printf "engine:    %s\n" "$ENGINE"
+    printf "voice:     %s\n" "$VOICE"
+    if [ "$ENGINE" = kokoro ]; then
+      printf "speed:     %s\n" "$SPEED"
+      printf "installed: %s\n" "$(kokoro_ready && echo yes || echo 'no — run: claude-voice install-kokoro')"
+      printf "daemon:    %s\n" "$(daemon_up && echo 'running (warm, ~1s per reply)' || echo 'stopped (first reply cold-starts, ~5s)')"
+    else
+      printf "rate:      %s wpm\n" "$RATE"
+    fi
+    printf "announce:  %s\n" "$(cat "$ANNOUNCE_FILE" 2>/dev/null || echo on)"
+    printf "maxlen:    %s\n" "$(cat "$MAXLEN_FILE" 2>/dev/null || echo '0 (whole reply)')"
+    ;;
+
+  *)
+    sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'
+    exit 1
+    ;;
+esac

@@ -1,0 +1,17 @@
+{
+  "description": "Read Claude's replies aloud when a turn completes",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/speak.sh",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

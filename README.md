@@ -1,0 +1,162 @@
+# claude-code-voice
+
+**Claude Code can hear you. This makes it talk back.**
+
+Claude Code ships voice *input* — press a key, dictate your prompt. But there's no voice *output*: when Claude finishes working, the answer just lands silently in your terminal, and you have to go read it.
+
+That breaks the hands-free loop. You can talk to Claude from across the room, but you can't hear what it said.
+
+This plugin closes it. When Claude finishes a turn, its reply is read aloud — using [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), a neural TTS model that runs **entirely on your machine**. No API key, no cloud round-trip, no per-word billing, works on a plane.
+
+```
+you dictate  ──▶  Claude works  ──▶  Claude speaks
+     ▲                                     │
+     └─────────────────────────────────────┘
+```
+
+---
+
+## Install
+
+```bash
+/plugin marketplace add syymza/claude-code-voice
+/plugin install claude-code-voice
+```
+
+Then install the CLI and the local voice model:
+
+```bash
+git clone https://github.com/syymza/claude-code-voice
+cd claude-code-voice && ./install.sh
+```
+
+And turn it on:
+
+```bash
+claude-voice on
+```
+
+That's it. The next thing Claude says, you'll hear.
+
+> **Not sold on a 520MB download?** `./install.sh --no-kokoro` skips the model and uses your OS's built-in voice (macOS `say`, Linux `espeak-ng`). It sounds dated, but it's instant and weighs nothing. Upgrade any time with `claude-voice install-kokoro`.
+
+---
+
+## Usage
+
+```bash
+claude-voice on              # read replies aloud
+claude-voice off             # stop
+claude-voice toggle          # flip it
+claude-voice stop            # shut up right now, stay enabled
+
+claude-voice voices          # list the 27 Kokoro voices
+claude-voice voice af_bella  # switch voice
+claude-voice speed 1.15      # talk faster
+claude-voice test            # hear a sample
+claude-voice status          # what's on, what's warm
+```
+
+Everything takes effect on the **next reply** — no restart, no config editing.
+
+`af_heart` is the default and Kokoro's best-graded voice. `af_bella` and `am_michael` are the next best; `bf_emma` and `bm_george` are British.
+
+---
+
+## What makes it usable
+
+Three problems that aren't obvious until you hit them, and what this does about them.
+
+### It starts talking in ~1 second, however long the reply
+
+The naive approach — synthesize the whole reply, then play it — means **time-to-first-sound scales with how much Claude said**. A long answer left us waiting 4+ seconds in silence, and it got worse the more Claude wrote.
+
+So the daemon splits the reply into sentences and starts playing the first one while the rest synthesize behind it. First sound lands in about a second and *stays* there, no matter how long the answer runs.
+
+There's also a resident daemon rather than a fresh process per reply — not for the model load (that's only ~0.4s) but because ONNX's **first** synthesis costs ~5s in graph warmup. A one-shot process pays that every single turn. The daemon pays it once, at startup, into silence.
+
+### It handles parallel sessions without talking over itself
+
+If you run several Claude Code sessions at once — cmux tabs, git worktrees, parallel agents — they all finish turns independently, and a naive "interrupt whatever's playing" rule means **whichever session finishes last cuts off whatever another was mid-sentence saying**, with no clue whose voice you were even hearing.
+
+Instead:
+
+| | |
+|---|---|
+| **Same session, new turn** | Barges in — you want its latest answer, not a stale backlog |
+| **Different session** | Queues behind, and announces itself by project name |
+
+So two chats finishing together get read one after the other, in full, and you know which is which. (`claude-voice announce off` if you'd rather not hear project names. Labels that are just opaque ids — UUIDs, hashes — are never read aloud, because "seven b, three f, nine a" is worse than nothing.)
+
+### It doesn't read markdown at you
+
+Piping Claude's raw output into a TTS engine is unbearable — it recites backticks, asterisks, table pipes, and forty seconds of TypeScript. So the reply is stripped first: code fences become a brief *"code block"* rather than a recital, emphasis and headers and list bullets vanish, links keep their text and lose their URL, and emoji are dropped instead of being read out as *"party popper"*.
+
+Arrows survive as words, though — `800ms → 120ms` becomes *"800ms to 120ms"*, because deleting it would have turned a real claim into nonsense.
+
+---
+
+## How it works
+
+Claude Code's `Stop` hook fires once per completed turn and hands you the reply in `last_assistant_message`:
+
+```
+Stop hook ──▶ speak.sh ──▶ strip markdown ──▶ unix socket ──▶ voice-daemon.py
+                                                                    │
+                                            chunk ─▶ synthesize ─▶ play
+                                                    (Kokoro)     (afplay)
+```
+
+The hook returns in ~0.1s — it hands the text to the daemon and gets out of the way, so Claude is never blocked waiting on audio.
+
+> **Note:** the reply text comes from the hook payload's `last_assistant_message` field, **not** from parsing `transcript.jsonl`. That transcript format is internal to Claude Code and documented to change between releases; parsing it is a latent break on any upgrade.
+
+If Kokoro fails to load for any reason, the hook silently falls back to the OS voice rather than leaving you in silence.
+
+---
+
+## Requirements
+
+- macOS or Linux
+- `jq`, `perl`, `nc`, `curl`
+- An audio player: `afplay` (macOS), `paplay`/`aplay` (Linux)
+- For the neural engine: `uv` or `python3`, and ~520MB of disk
+
+---
+
+## Configuration
+
+State lives in files under `~/.claude/voice/`, not environment variables — Claude Code spawns hooks **without your interactive shell's environment**, so an `export` in `~/.zshrc` would never reach the hook. (That one cost an afternoon.)
+
+| Command | Default | |
+|---|---|---|
+| `claude-voice engine kokoro\|say` | `kokoro` | Neural, or the OS built-in |
+| `claude-voice voice <name>` | `af_heart` | See `claude-voice voices` |
+| `claude-voice speed <x>` | `1.0` | Kokoro rate multiplier |
+| `claude-voice maxlen <n>` | `0` | Cap spoken characters; `0` = the whole reply |
+| `claude-voice announce on\|off` | `on` | Speak the project name in parallel sessions |
+
+---
+
+## Troubleshooting
+
+**Nothing is spoken.** Check `claude-voice status` — readback may be `off`. If it's on, `claude-voice logs` shows what the daemon did.
+
+**The first reply took ~5 seconds.** That's a cold daemon paying ONNX's one-time warmup. Every reply after is ~1s. `claude-voice restart` warms it deliberately.
+
+**It talks over itself.** Shouldn't happen — file an issue with `claude-voice logs`.
+
+**I want it to shut up right now.** `claude-voice stop` silences the current reply without disabling readback.
+
+---
+
+## Credits
+
+- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) by hexgrad — Apache 2.0
+- [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) by thewh1teagle — MIT
+
+Model weights are downloaded at install time, not vendored here.
+
+## License
+
+MIT

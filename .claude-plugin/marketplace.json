@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-code-voice",
+  "description": "Claude Code can hear you. This makes it talk back — replies read aloud with local neural TTS.",
+  "owner": {
+    "name": "Daniele Zanni"
+  },
+  "plugins": [
+    {
+      "name": "claude-code-voice",
+      "description": "A Stop hook that reads Claude's replies aloud, using Kokoro neural TTS running locally (no API key, no cloud).",
+      "source": "./plugins/claude-code-voice",
+      "category": "productivity",
+      "homepage": "https://github.com/syymza/claude-code-voice"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "claude-code-voice",
+  "version": "0.1.0",
+  "description": "Reads Claude Code's replies aloud. Local neural TTS (Kokoro), streaming playback, parallel-session aware.",
+  "author": {
+    "name": "Daniele Zanni"
+  },
+  "license": "MIT",
+  "keywords": [
+    "tts",
+    "text-to-speech",
+    "voice",
+    "accessibility",
+    "kokoro",
+    "hands-free"
+  ]
+}
