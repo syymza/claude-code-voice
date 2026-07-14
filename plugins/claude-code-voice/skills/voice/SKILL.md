@@ -17,7 +17,7 @@ speaking instead of typing flags, which matters because the whole point of the
 tool is that they are hands-free and probably not looking at the terminal.
 
 Every action is a `claude-voice` shell command. Run it, then confirm in **one
-short sentence** — the confirmation is about to be read aloud, so do not
+short sentence**. The confirmation is about to be read aloud, so do not
 narrate, do not list options, and do not restate what they asked.
 
 ## Mapping intent to commands
@@ -40,15 +40,15 @@ narrate, do not list options, and do not restate what they asked.
 ## Speed
 
 `speed` is a multiplier, default `1.0`. Read the current value from
-`claude-voice status`, then step by ~0.15 in the direction asked, clamped to
-0.5–2.0. "Much faster" is a bigger jump. Do not ask them for a number.
+`claude-voice status`, then step by ~0.15 in the direction asked, clamped to the
+range 0.5 to 2.0. "Much faster" is a bigger jump. Do not ask them for a number.
 
 ## Voices
 
 Kokoro voice names encode accent and gender: `af_*` US female, `am_*` US male,
 `bf_*` UK female, `bm_*` UK male. So "a British man" is `bm_george` or
 `bm_lewis`; "an American woman" is `af_heart` or `af_bella`. Pick a sensible one
-that matches the request and set it — only run `claude-voice voices` if they
+that matches the request and set it. Only run `claude-voice voices` if they
 explicitly want the list.
 
 Good defaults: `af_heart` (best overall), `af_bella`, `am_michael`, `bf_emma`,
@@ -57,7 +57,7 @@ Good defaults: `af_heart` (best overall), `af_bella`, `am_michael`, `bf_emma`,
 ## Replay
 
 `claude-voice replay` re-speaks the last reply. Reach for it on any "I missed
-that" phrasing. It is *not* a summary and not a rephrase — do not re-answer the
+that" phrasing. It is *not* a summary and not a rephrase. Do not re-answer the
 question, just replay it.
 
 ## Notes

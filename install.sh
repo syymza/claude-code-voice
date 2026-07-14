@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# claude-code-voice — installer.
+# claude-code-voice -- installer.
 #
 # Puts the `claude-voice` CLI on your PATH and (by default) installs the local
 # Kokoro neural TTS engine. The Claude Code hook itself is wired up by the
-# plugin — see the README for `/plugin marketplace add`.
+# plugin -- see the README for `/plugin marketplace add`.
 #
 #   ./install.sh                 CLI + kokoro engine (~520MB)
 #   ./install.sh --no-kokoro     CLI only; uses the OS built-in voice
@@ -51,7 +51,7 @@ ln -sf "$CLI_SRC" "$BIN_DIR/claude-voice"
 echo "  linked $BIN_DIR/claude-voice -> $CLI_SRC"
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
-  *) warn "$BIN_DIR is not on your PATH — add it to your shell profile:"
+  *) warn "$BIN_DIR is not on your PATH -- add it to your shell profile:"
      echo "      export PATH=\"\$PATH:$BIN_DIR\"" ;;
 esac
 
@@ -62,7 +62,7 @@ if [ "$WITH_KOKORO" = 1 ]; then
   echo "  Skip this with: ./install.sh --no-kokoro"
   "$BIN_DIR/claude-voice" install-kokoro
 else
-  say_step "Skipping Kokoro — using the OS built-in voice"
+  say_step "Skipping Kokoro -- using the OS built-in voice"
   echo say > "$VOICE_HOME/engine"
   echo "  Install it later with: claude-voice install-kokoro"
 fi

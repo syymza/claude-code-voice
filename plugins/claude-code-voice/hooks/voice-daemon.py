@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claude-code-voice — resident Kokoro TTS daemon.
+"""claude-code-voice -- resident Kokoro TTS daemon.
 
 Three design decisions worth knowing, because each fixes a problem that is not
 obvious until you hit it:
@@ -12,7 +12,7 @@ obvious until you hit it:
 2. WHY STREAMING.  Synthesizing a whole reply before playing anything makes
    time-to-first-sound scale with reply length (4s+ on a long answer, and worse
    the more Claude says). We split into sentence chunks and start playing chunk
-   one while the rest synthesize behind it — first sound in ~1s, near-constant
+   one while the rest synthesize behind it -- first sound in ~1s, near-constant
    regardless of length.
 
 3. WHY SESSION-AWARE.  Multiple Claude Code sessions (cmux tabs, worktrees,
@@ -22,7 +22,7 @@ obvious until you hit it:
        same session   -> barge in   (you want its latest answer, not a backlog)
        other session  -> queue      (announced by project name, never clobbered)
 
-Protocol — newline-delimited UTF-8 over a unix socket:
+Protocol -- newline-delimited UTF-8 over a unix socket:
     {"session","label","text"}\\n  enqueue; reply "ok\\n"
     <bare text>\\n                 same, as an anonymous session
     __STOP__\\n                    drop everything, silence; reply "ok\\n"
@@ -426,7 +426,7 @@ def main() -> int:
         log("no audio player found (need afplay, paplay, aplay or ffplay)")
         return 3
     if not (os.path.exists(MODEL) and os.path.exists(VOICES)):
-        log(f"model files missing under {MODELS} — run: claude-voice install-kokoro")
+        log(f"model files missing under {MODELS} -- run: claude-voice install-kokoro")
         return 2
 
     if os.path.exists(SOCK):

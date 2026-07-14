@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-code-voice — control CLI.
+# claude-code-voice -- control CLI.
 #
 #   claude-voice on | off | toggle    turn readback on/off
 #   claude-voice status               engine, voice, daemon state
@@ -42,7 +42,7 @@ VOICEMODE_FILE="$VOICE_HOME/voicemode"
 VOICEMAP_FILE="$VOICE_HOME/voicemap"
 PID_FILE="$VOICE_HOME/say.pid"
 
-# Short socket path — see the comment in hooks/speak.sh. AF_UNIX caps near 104
+# Short socket path -- see the comment in hooks/speak.sh. AF_UNIX caps near 104
 # bytes; a socket inside VOICE_HOME overflows it on deep home dirs.
 _ccv_sock() {
   local h
@@ -116,7 +116,7 @@ say_now() {
     if daemon_up || start_daemon; then
       printf '%s\n' "$1" | nc -U "$SOCK" >/dev/null 2>&1 && return 0
     fi
-    echo "(kokoro unavailable — using the built-in voice)" >&2
+    echo "(kokoro unavailable -- using the built-in voice)" >&2
   fi
   speak_builtin "$1"
 }
@@ -125,7 +125,7 @@ install_kokoro() {
   command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; return 1; }
 
   if [ ! -x "$VENV_PY" ]; then
-    echo "Creating Python environment…"
+    echo "Creating Python environment..."
     if command -v uv >/dev/null 2>&1; then
       uv venv "$VENV" --python 3.12 >/dev/null 2>&1 || uv venv "$VENV" >/dev/null 2>&1
       VIRTUAL_ENV="$VENV" uv pip install --quiet kokoro-onnx soundfile numpy || return 1
@@ -144,7 +144,7 @@ install_kokoro() {
     if [ -s "$MODELS/$f" ]; then
       echo "have $f"
     else
-      echo "Downloading $f…"
+      echo "Downloading $f..."
       curl -fL --progress-bar -o "$MODELS/$f" "$MODEL_URL/$f" || return 1
     fi
   done
@@ -160,9 +160,9 @@ case "${1:-status}" in
       echo say > "$ENGINE_FILE"
       ENGINE=say
     fi
-    echo "voice readback ON — engine=$ENGINE voice=$VOICE"
+    echo "voice readback ON -- engine=$ENGINE voice=$VOICE"
     [ "$ENGINE" = kokoro ] && ! daemon_up && {
-      echo "warming the kokoro daemon in the background…"
+      echo "warming the kokoro daemon in the background..."
       nohup "$VENV_PY" "$DAEMON" >/dev/null 2>&1 & disown 2>/dev/null || true
     }
     ;;
@@ -214,7 +214,7 @@ case "${1:-status}" in
       echo "  British female:   bf_emma  bf_isabella  bf_alice  bf_lily"
       echo "  British male:     bm_george  bm_fable  bm_daniel  bm_lewis"
       echo
-      echo "  * af_heart is Kokoro's reference voice — best overall."
+      echo "  * af_heart is Kokoro's reference voice -- best overall."
       echo "    af_bella and am_michael are the next best graded."
       echo
       echo "Set with:  claude-voice voice af_bella"
@@ -222,7 +222,7 @@ case "${1:-status}" in
       echo "System voices (current: $VOICE)"
       command -v say >/dev/null 2>&1 \
         && say -v '?' | grep -E 'en_(US|GB|AU|IE)' | awk '{printf "  %-20s %s\n", $1, $2}' \
-        || echo "  (espeak-ng — see 'espeak-ng --voices')"
+        || echo "  (espeak-ng -- see 'espeak-ng --voices')"
     fi
     ;;
 
@@ -244,17 +244,17 @@ case "${1:-status}" in
     want="${2:-}"
     case "$want" in ''|*[!0-9]*) echo "usage: claude-voice maxlen <chars>   (0 = whole reply; current: $(cat "$MAXLEN_FILE" 2>/dev/null || echo 0))" >&2; exit 1 ;; esac
     echo "$want" > "$MAXLEN_FILE"
-    [ "$want" = 0 ] && echo "maxlen = 0 — full replies are read ('claude-voice stop' cuts one short)" \
-                    || echo "maxlen = $want chars — longer replies trim at a sentence break"
+    [ "$want" = 0 ] && echo "maxlen = 0 -- full replies are read ('claude-voice stop' cuts one short)" \
+                    || echo "maxlen = $want chars -- longer replies trim at a sentence break"
     ;;
 
   announce)
     case "${2:-}" in
-      always) echo always > "$ANNOUNCE_FILE"; echo "announce = always — every reply is prefixed with the project name" ;;
+      always) echo always > "$ANNOUNCE_FILE"; echo "announce = always -- every reply is prefixed with the project name" ;;
       smart|on) echo smart > "$ANNOUNCE_FILE"
-        echo "announce = smart — the project name is spoken only when it's ambiguous"
+        echo "announce = smart -- the project name is spoken only when it's ambiguous"
         echo "                   who's talking. A single chat never hears a prefix." ;;
-      off) echo off > "$ANNOUNCE_FILE"; echo "announce = off — the project name is never spoken" ;;
+      off) echo off > "$ANNOUNCE_FILE"; echo "announce = off -- the project name is never spoken" ;;
       *)   echo "usage: claude-voice announce {always|smart|off}   (current: $(cat "$ANNOUNCE_FILE" 2>/dev/null || echo smart))" >&2; exit 1 ;;
     esac
     ;;
@@ -263,14 +263,14 @@ case "${1:-status}" in
     case "${2:-}" in
       project|per-project)
         echo project > "$VOICEMODE_FILE"
-        echo "voicemode = project — each project/branch gets its own voice, so you"
+        echo "voicemode = project -- each project/branch gets its own voice, so you"
         echo "                      can tell parallel terminals apart by ear."
         echo
         exec "$0" whospeaks
         ;;
       fixed|one)
         echo fixed > "$VOICEMODE_FILE"
-        echo "voicemode = fixed — every chat speaks with '$VOICE'"
+        echo "voicemode = fixed -- every chat speaks with '$VOICE'"
         ;;
       *) echo "usage: claude-voice voicemode {project|fixed}   (current: $(cat "$VOICEMODE_FILE" 2>/dev/null || echo fixed))" >&2; exit 1 ;;
     esac
@@ -278,15 +278,15 @@ case "${1:-status}" in
 
   whospeaks)
     # Voices are assigned the first time a project actually speaks, so this only
-    # lists what's been heard — listing must never assign, or it would burn
+    # lists what's been heard -- listing must never assign, or it would burn
     # voices on projects you never use.
     if [ "$(cat "$VOICEMODE_FILE" 2>/dev/null || echo fixed)" != project ]; then
-      echo "voicemode is 'fixed' — every chat speaks with '$VOICE'."
+      echo "voicemode is 'fixed' -- every chat speaks with '$VOICE'."
       echo "Enable per-project voices:  claude-voice voicemode project"
       exit 0
     fi
     if [ ! -s "$VOICEMAP_FILE" ] || [ "$(jq -r 'length' "$VOICEMAP_FILE" 2>/dev/null || echo 0)" = 0 ]; then
-      echo "No voices assigned yet — each project gets one the first time it speaks."
+      echo "No voices assigned yet -- each project gets one the first time it speaks."
     else
       printf '  %-30s %s\n' "PROJECT" "VOICE"
       printf '  %-30s %s\n' "------------------------------" "-----------"
@@ -318,7 +318,7 @@ case "${1:-status}" in
 
   voicereset)
     rm -f "$VOICEMAP_FILE"
-    echo "voice assignments cleared — projects get fresh voices as they next speak"
+    echo "voice assignments cleared -- projects get fresh voices as they next speak"
     ;;
 
   replay|again)
@@ -328,11 +328,11 @@ case "${1:-status}" in
       echo "replay needs the kokoro engine (the built-in voice keeps no history)" >&2
       exit 1
     fi
-    daemon_up || { echo "the daemon isn't running — nothing to replay" >&2; exit 1; }
+    daemon_up || { echo "the daemon isn't running -- nothing to replay" >&2; exit 1; }
     want="${2:-}"
     if [ -n "$want" ]; then req="__REPLAY__ $want"; else req="__REPLAY__"; fi
     case "$(printf '%s\n' "$req" | nc -U "$SOCK" 2>/dev/null)" in
-      ok)    echo "replaying the last reply…" ;;
+      ok)    echo "replaying the last reply..." ;;
       empty) echo "nothing has been spoken yet" >&2; exit 1 ;;
       *)     echo "the daemon did not respond" >&2; exit 1 ;;
     esac
@@ -352,7 +352,7 @@ case "${1:-status}" in
     nohup "$VENV_PY" "$DAEMON" >/dev/null 2>&1 & disown 2>/dev/null || true
     for _ in $(seq 1 60); do daemon_up && break; printf '.'; sleep 0.25; done
     echo
-    daemon_up && echo "ready — replies now start speaking in about a second" \
+    daemon_up && echo "ready -- replies now start speaking in about a second" \
               || { echo "the daemon failed to start; see $LOG" >&2; exit 1; }
     ;;
 
@@ -368,7 +368,7 @@ case "${1:-status}" in
     printf "voice:     %s\n" "$VOICE"
     if [ "$ENGINE" = kokoro ]; then
       printf "speed:     %s\n" "$SPEED"
-      printf "installed: %s\n" "$(kokoro_ready && echo yes || echo 'no — run: claude-voice install-kokoro')"
+      printf "installed: %s\n" "$(kokoro_ready && echo yes || echo 'no -- run: claude-voice install-kokoro')"
       printf "daemon:    %s\n" "$(daemon_up && echo 'running (warm, ~1s per reply)' || echo 'stopped (first reply cold-starts, ~5s)')"
     else
       printf "rate:      %s wpm\n" "$RATE"

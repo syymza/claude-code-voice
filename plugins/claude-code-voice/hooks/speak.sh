@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-code-voice — Stop hook.
+# claude-code-voice -- Stop hook.
 #
 # Claude Code has voice INPUT (/voice) but no voice output. This hook is the
 # missing half: when Claude finishes a turn, it reads the reply aloud.
@@ -8,12 +8,12 @@
 #   Stop payload -> last_assistant_message -> strip markdown -> engine -> audio
 #
 # The message comes from the payload's `last_assistant_message` field, NOT from
-# parsing transcript.jsonl — that format is internal to Claude Code and is
+# parsing transcript.jsonl -- that format is internal to Claude Code and is
 # documented to change between releases.
 #
 # Engines:
 #   kokoro  local neural TTS via a resident daemon (default; best quality)
-#   say     the OS built-in (macOS `say`, Linux `espeak-ng`) — zero deps
+#   say     the OS built-in (macOS `say`, Linux `espeak-ng`) -- zero deps
 #
 # Control: `claude-voice on|off|voice|engine|...`  (see bin/claude-voice)
 
@@ -29,7 +29,7 @@ PID_FILE="$VOICE_HOME/say.pid"
 VENV_PY="$VOICE_HOME/venv/bin/python"
 
 # AF_UNIX paths are capped near 104 bytes on macOS. A socket inside VOICE_HOME
-# overflows that for deep home dirs, and bind() dies with "path too long" —
+# overflows that for deep home dirs, and bind() dies with "path too long" --
 # so the daemon never starts and we silently degrade to the OS voice. Keep the
 # socket short: a 0700 dir under /tmp, keyed by a hash of VOICE_HOME.
 # voice-daemon.py computes the identical path; keep the two in sync.
@@ -94,7 +94,7 @@ fi
 
 # --- Markdown -> speakable prose --------------------------------------------
 # -CSD: decode I/O as UTF-8. Without it perl sees raw bytes and every \x{...}
-# range below silently fails to match — emoji get read out loud.
+# range below silently fails to match -- emoji get read out loud.
 spoken=$(MAXLEN="$MAXLEN" perl -0777 -CSD -e '
   my $t = do { local $/; <STDIN> };
 

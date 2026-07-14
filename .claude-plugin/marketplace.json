@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "claude-code-voice",
-  "description": "Claude Code can hear you. This makes it talk back — replies read aloud with local neural TTS.",
+  "description": "Claude Code can hear you. This makes it talk back. Replies read aloud with local neural TTS.",
   "owner": {
     "name": "Daniele Zanni"
   },
