@@ -260,10 +260,28 @@ class Speaker:
         self.player: subprocess.Popen | None = None
         self.last_session: str | None = None
         self.last_spoke_at = 0.0
+        # What each session last said, so "read that again" has something to
+        # replay. Bounded: this is a convenience buffer, not a transcript.
+        self.history: dict[str, dict] = {}
         threading.Thread(target=self._run, daemon=True).start()
 
     # --- producer -----------------------------------------------------------
-    def submit(self, session: str, label: str, text: str) -> None:
+    def replay(self, session: str | None = None) -> bool:
+        """Re-speak a session's last reply. Powers "read that again"."""
+        with self.lock:
+            key = session or self.last_session
+            item = self.history.get(key) if key else None
+        if not item:
+            return False
+        self.submit(key, item["label"], item["text"], remember=False)
+        return True
+
+    def submit(self, session: str, label: str, text: str, remember: bool = True) -> None:
+        if remember:
+            with self.lock:
+                self.history[session] = {"label": label, "text": text}
+                if len(self.history) > 32:  # keep it bounded
+                    self.history.pop(next(iter(self.history)))
         with self.lock:
             # A newer turn from the same session supersedes its queued one:
             # you want that session's latest answer, never a stale backlog.
@@ -471,6 +489,13 @@ def main() -> int:
             if data == "__STOP__":
                 speaker.stop_all()
                 conn.sendall(b"ok\n")
+                continue
+            if data.startswith("__REPLAY__"):
+                # "__REPLAY__" replays whatever spoke last;
+                # "__REPLAY__ <session>" replays that session's last reply.
+                parts = data.split(maxsplit=1)
+                want = parts[1].strip() if len(parts) > 1 else None
+                conn.sendall(b"ok\n" if speaker.replay(want) else b"empty\n")
                 continue
             if data == "__QUIT__":
                 conn.sendall(b"ok\n")

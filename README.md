@@ -52,6 +52,7 @@ claude-voice off             # stop
 claude-voice toggle          # flip it
 claude-voice stop            # shut up right now, stay enabled
 
+claude-voice replay          # say that again
 claude-voice voices          # list the 27 Kokoro voices
 claude-voice voice af_bella  # switch voice
 claude-voice speed 1.15      # talk faster
@@ -60,6 +61,18 @@ claude-voice status          # what's on, what's warm
 ```
 
 Everything takes effect on the **next reply** — no restart, no config editing.
+
+### Or just say it
+
+The plugin ships a skill, so you don't have to remember any of the above. Talk to Claude the way you already do:
+
+> *"read that again"* · *"stop talking"* · *"a bit slower"* · *"use a British voice"* · *"which voice is this project?"* · *"turn the voice off"*
+
+Which matters more than it sounds: the entire premise is that you're hands-free and not looking at the terminal. Asking it to slow down by *saying so* is the natural gesture. Typing `claude-voice speed 0.9` rather defeats the point.
+
+`read that again` is the one you'll reach for most — a plane goes over, someone talks to you mid-answer, and the reply is gone. The daemon keeps the last thing it said per session precisely so it can repeat it.
+
+> The readback itself stays a hook, not a skill, and has to. Skills are invoked *by the model* mid-conversation; readback must fire when a turn **ends** — the exact moment the model has stopped deciding anything. Only the harness can do that. The skill is the steering wheel, not the engine.
 
 `af_heart` is the default and Kokoro's best-graded voice. `af_bella` and `am_michael` are the next best; `bf_emma` and `bm_george` are British.
 

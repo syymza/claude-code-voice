@@ -1,7 +1,7 @@
 {
   "name": "claude-code-voice",
-  "version": "0.1.0",
-  "description": "Reads Claude Code's replies aloud. Local neural TTS (Kokoro), streaming playback, parallel-session aware.",
+  "version": "0.2.0",
+  "description": "Reads Claude Code's replies aloud. Local neural TTS (Kokoro), streaming playback, per-project voices, and a skill for hands-free control.",
   "author": {
     "name": "Daniele Zanni"
   },
@@ -12,6 +12,7 @@
     "voice",
     "accessibility",
     "kokoro",
-    "hands-free"
+    "hands-free",
+    "skill"
   ]
 }

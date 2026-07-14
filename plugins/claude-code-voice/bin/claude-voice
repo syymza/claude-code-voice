@@ -321,6 +321,23 @@ case "${1:-status}" in
     echo "voice assignments cleared — projects get fresh voices as they next speak"
     ;;
 
+  replay|again)
+    # Re-speak the last reply. For when a plane goes over, or someone talks to
+    # you halfway through the answer.
+    if [ "$ENGINE" != kokoro ]; then
+      echo "replay needs the kokoro engine (the built-in voice keeps no history)" >&2
+      exit 1
+    fi
+    daemon_up || { echo "the daemon isn't running — nothing to replay" >&2; exit 1; }
+    want="${2:-}"
+    if [ -n "$want" ]; then req="__REPLAY__ $want"; else req="__REPLAY__"; fi
+    case "$(printf '%s\n' "$req" | nc -U "$SOCK" 2>/dev/null)" in
+      ok)    echo "replaying the last reply…" ;;
+      empty) echo "nothing has been spoken yet" >&2; exit 1 ;;
+      *)     echo "the daemon did not respond" >&2; exit 1 ;;
+    esac
+    ;;
+
   install-kokoro)
     install_kokoro && { echo kokoro > "$ENGINE_FILE"; is_kokoro_voice "$VOICE" || echo af_heart > "$VOICE_FILE"; exec "$0" restart; }
     ;;
