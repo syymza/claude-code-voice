@@ -86,7 +86,25 @@ Instead:
 | **Same session, new turn** | Barges in — you want its latest answer, not a stale backlog |
 | **Different session** | Queues behind, and announces itself by project name |
 
-So two chats finishing together get read one after the other, in full, and you know which is which. (`claude-voice announce off` if you'd rather not hear project names. Labels that are just opaque ids — UUIDs, hashes — are never read aloud, because "seven b, three f, nine a" is worse than nothing.)
+So two chats finishing together get read one after the other, in full, and you know which is which.
+
+Better still, **give each project its own voice**:
+
+```bash
+claude-voice voicemode project
+```
+
+Now `api-server` always speaks in one voice and `data-pipeline` in another, and you can follow both by ear without waiting to hear a name. Voices are keyed on the project + branch — not the session id, which is regenerated on every restart and would reshuffle everything daily — so a context sounds the same tomorrow as it does today, and two worktrees of the same repo get *different* voices, which is the case that's hardest to tell apart.
+
+The pool is eight voices, deliberately alternating gender and accent so neighbours never sound alike. Assignment is least-used-first rather than hashed: hashing collides badly at small N (ten projects over eight voices put three of them on the same voice, defeating the point).
+
+```bash
+claude-voice whospeaks                      # who sounds like what
+claude-voice voicefor api-server bm_george  # pin one
+claude-voice announce always|smart|off      # spoken project names
+```
+
+Labels that are just opaque ids — UUIDs, hashes, bare digits — are never read aloud, because "seven b, three f, nine a" is worse than hearing nothing.
 
 ### It doesn't read markdown at you
 
@@ -134,7 +152,8 @@ State lives in files under `~/.claude/voice/`, not environment variables — Cla
 | `claude-voice voice <name>` | `af_heart` | See `claude-voice voices` |
 | `claude-voice speed <x>` | `1.0` | Kokoro rate multiplier |
 | `claude-voice maxlen <n>` | `0` | Cap spoken characters; `0` = the whole reply |
-| `claude-voice announce on\|off` | `on` | Speak the project name in parallel sessions |
+| `claude-voice voicemode project\|fixed` | `fixed` | Give each project its own voice |
+| `claude-voice announce always\|smart\|off` | `smart` | Speak the project name in parallel sessions |
 
 ---
 

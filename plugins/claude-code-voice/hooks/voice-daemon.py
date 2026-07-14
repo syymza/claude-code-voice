@@ -80,7 +80,9 @@ MODEL = os.path.join(MODELS, "kokoro-v1.0.onnx")
 VOICES = os.path.join(MODELS, "voices-v1.0.bin")
 VOICE_FILE = os.path.join(VOICE_HOME, "voice")
 SPEED_FILE = os.path.join(VOICE_HOME, "speed")
-ANNOUNCE_FILE = os.path.join(VOICE_HOME, "announce")
+ANNOUNCE_FILE = os.path.join(VOICE_HOME, "announce")   # always | smart | off
+VOICEMODE_FILE = os.path.join(VOICE_HOME, "voicemode")  # fixed | project
+VOICEMAP_FILE = os.path.join(VOICE_HOME, "voicemap")    # {label: voice}
 LOG = os.path.join(VOICE_HOME, "daemon.log")
 
 IDLE_TIMEOUT = 30 * 60  # exit after this long with no work; restarts on demand
@@ -95,6 +97,23 @@ MAX_CHUNK = 300
 RELABEL_AFTER = 90.0
 
 DEFAULT_VOICE = "af_heart"
+
+# Pool for per-project voices, ordered so adjacent picks differ in BOTH gender
+# and accent -- the whole point is telling two terminals apart by ear, and
+# similar-sounding neighbours would defeat that. All are top-graded Kokoro voices.
+VOICE_POOL = [
+    "af_heart",     # US female (Kokoro's reference voice)
+    "bm_george",    # UK male
+    "am_michael",   # US male
+    "bf_emma",      # UK female
+    "af_bella",     # US female, warmer
+    "bm_lewis",     # UK male, deeper
+    "am_fenrir",    # US male, brighter
+    "bf_isabella",  # UK female, lower
+]
+
+# Voice assignment is a read-modify-write on a shared file; serialize it.
+_voicemap_lock = threading.Lock()
 
 
 def log(msg: str) -> None:
@@ -122,6 +141,55 @@ def find_player() -> list[str] | None:
 
 
 PLAYER = find_player()
+
+
+def pick_voice(label: str, session: str) -> str:
+    """Which voice reads this reply.
+
+    In 'project' mode every context gets its own voice, so you can follow two
+    terminals by ear without waiting to hear the project name.
+
+    Keyed on the LABEL (project + branch), never the session id: session ids are
+    regenerated when you restart a chat, which would reshuffle every voice daily.
+    A label is stable -- `api-server` sounds the same tomorrow -- and two
+    worktrees of one repo still get different voices, which is exactly the case
+    that's hardest to tell apart by ear.
+    """
+    default = read_setting(VOICE_FILE, DEFAULT_VOICE)
+    if read_setting(VOICEMODE_FILE, "fixed") != "project":
+        return default
+
+    key = (label or session or "").strip()
+    if not key:
+        return default
+
+    with _voicemap_lock:
+        try:
+            with open(VOICEMAP_FILE) as fh:
+                mapping = json.load(fh)
+            if not isinstance(mapping, dict):
+                mapping = {}
+        except (OSError, json.JSONDecodeError):
+            mapping = {}
+
+        if key in mapping:  # already assigned, or explicitly pinned
+            return mapping[key]
+
+        # Hashing the label collides badly at small N -- 10 projects over 8
+        # voices put three of them on the same voice, which defeats the point.
+        # Assign the least-used voice instead, then persist: distinct voices
+        # until the pool is exhausted, and stable forever after.
+        used = list(mapping.values())
+        voice = min(VOICE_POOL, key=lambda v: (used.count(v), VOICE_POOL.index(v)))
+        mapping[key] = voice
+        try:
+            tmp = f"{VOICEMAP_FILE}.tmp"
+            with open(tmp, "w") as fh:
+                json.dump(mapping, fh, indent=2, sort_keys=True)
+            os.replace(tmp, VOICEMAP_FILE)
+        except OSError as exc:
+            log(f"could not persist the voice map: {exc}")
+        return voice
 
 
 def is_speakable_label(label: str) -> bool:
@@ -250,7 +318,7 @@ class Speaker:
     def _speak(self, session: str, label: str, text: str) -> None:
         import soundfile as sf
 
-        voice = read_setting(VOICE_FILE, DEFAULT_VOICE)
+        voice = pick_voice(label, session)
         try:
             speed = float(read_setting(SPEED_FILE, "1.0"))
         except ValueError:
@@ -262,14 +330,17 @@ class Speaker:
             switched = self.last_session is not None and self.last_session != session
             stale = time.time() - self.last_spoke_at > RELABEL_AFTER
             others_waiting = bool(self.order)
-        if (
-            read_setting(ANNOUNCE_FILE, "on") == "on"
-            and is_speakable_label(label)
-            and (switched or (stale and others_waiting))
-        ):
-            text = f"{label}. {text}"
+        # off    never name the project
+        # smart  only when it's ambiguous who's talking (default)
+        # always name it on every reply
+        mode = read_setting(ANNOUNCE_FILE, "smart")
+        if mode == "on":  # legacy value
+            mode = "smart"
+        if mode != "off" and is_speakable_label(label):
+            if mode == "always" or switched or (stale and others_waiting):
+                text = f"{label}. {text}"
 
-        log(f"speak session={session[:8]} label={label!r} chars={len(text)}")
+        log(f"speak session={session[:8]} label={label!r} voice={voice} chars={len(text)}")
 
         wavs: queue.Queue = queue.Queue()
         done = threading.Event()
