@@ -6,7 +6,9 @@ Claude Code ships voice *input* — press a key, dictate your prompt. But there'
 
 That breaks the hands-free loop. You can talk to Claude from across the room, but you can't hear what it said.
 
-This plugin closes it. When Claude finishes a turn, its reply is read aloud — using [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), a neural TTS model that runs **entirely on your machine**. No API key, no cloud round-trip, no per-word billing, works on a plane.
+This plugin closes it. When Claude finishes a turn, its reply is read aloud — using [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), a neural TTS model that runs **entirely on your machine**. No extra API key, no audio leaving your laptop, no per-word billing for the privilege of being read to.
+
+It works in **any terminal** — iTerm2, Terminal.app, Ghostty, Warp, VS Code, cmux, tmux, a plain SSH session. It hangs off Claude Code's `Stop` hook, which fires the same way everywhere, so nothing in it knows or cares where you're running.
 
 ```
 you dictate  ──▶  Claude works  ──▶  Claude speaks
