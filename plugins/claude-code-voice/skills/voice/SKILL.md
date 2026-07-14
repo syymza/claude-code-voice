@@ -1,6 +1,12 @@
 ---
 name: voice
-description: Control spoken readback of Claude's replies — turn it on or off, silence it, replay the last answer, change voice or speed, or give each project its own voice. Use whenever the user refers to hearing, speaking, reading aloud, the voice, or being read to: "stop talking", "read that again", "say that slower", "use a British voice", "turn the voice off", "why are you speaking", "which voice is this project".
+description: >-
+  Control spoken readback of Claude's replies. Turn it on or off, silence it,
+  replay the last answer, change the voice or the speed, or give each project
+  its own voice. Use whenever the user refers to hearing, speaking, reading
+  aloud, the voice, or being read to. Triggers include stop talking, read that
+  again, say that slower, use a British voice, turn the voice off, why are you
+  speaking, and which voice is this project.
 ---
 
 # Voice readback control
